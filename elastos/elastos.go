@@ -63,6 +63,8 @@ func (wm *WalletManager) GetBlockScanner() openwallet.BlockScanner {
 //LoadAssetsConfig 加载外部配置
 func (wm *WalletManager) LoadAssetsConfig(c config.Configer) error {
 	wm.Config.ServerAPI = c.String("serverAPI")
+	wm.Config.UseFixedFee, _ = c.Bool("useFixedFee")
+	wm.Config.FixedFee = c.String("fixedFee")
 	wm.WalletClient = NewClient(wm.Config.ServerAPI, false)
 	return nil
 }

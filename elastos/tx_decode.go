@@ -238,11 +238,17 @@ func (decoder *TransactionDecoder) CreateELARawTransaction(wrapper openwallet.Wa
 			}
 			sigCount++
 		}
+		fees := decimal.Zero
 
-		//计算手续费，找零地址有2个，一个是发送，一个是新创建的
-		fees, err := decoder.wm.EstimateFee(int64(len(usedUTXO)), int64(len(destinations)+1), sigCount, feesRate)
-		if err != nil {
-			return err
+		if decoder.wm.Config.UseFixedFee {
+			//使用固定手续费
+			fees, _ = decimal.NewFromString(decoder.wm.Config.FixedFee)
+		} else {
+			//计算手续费，找零地址有2个，一个是发送，一个是新创建的
+			fees, err = decoder.wm.EstimateFee(int64(len(usedUTXO)), int64(len(destinations)+1), sigCount, feesRate)
+			if err != nil {
+				return err
+			}
 		}
 
 		//如果要手续费有发送支付，得计算加入手续费后，计算余额是否足够
@@ -498,9 +504,16 @@ func (decoder *TransactionDecoder) CreateELASummaryRawTransaction(wrapper openwa
 				}
 				sigCount++
 			}
-			fees, createErr := decoder.wm.EstimateFee(int64(len(sumUnspents)), int64(len(outputAddrs)+1), sigCount, feesRate)
-			if createErr != nil {
-				return nil, createErr
+
+			fees := decimal.Zero
+			var createErr error
+			if decoder.wm.Config.UseFixedFee {
+				fees, _ = decimal.NewFromString(decoder.wm.Config.FixedFee)
+			} else {
+				fees, createErr = decoder.wm.EstimateFee(int64(len(sumUnspents)), int64(len(outputAddrs)+1), sigCount, feesRate)
+				if createErr != nil {
+					return nil, createErr
+				}
 			}
 
 			//计算这笔交易单的汇总数量

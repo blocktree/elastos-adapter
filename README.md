@@ -11,4 +11,8 @@ openwtester包下的测试用例已经集成了openwallet钱包体系，创建co
 
 # node api url, if RPC Server Type = 1, use bitbay insight-api
 serverAPI = "http://ip:port"
+# use fixed fee or not
+useFixedFee = false
+# fixed fee
+fixedFee = "0.005"
 ```

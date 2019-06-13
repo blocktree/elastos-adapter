@@ -95,7 +95,10 @@ type WalletConfig struct {
 	CurveType uint32
 	//核心钱包密码，配置有值用于自动解锁钱包
 	WalletPassword string
-
+	//使用固定手续费
+	UseFixedFee bool
+	//固定手续费
+	FixedFee string
 	//小数位精度
 	Decimals int32
 }
