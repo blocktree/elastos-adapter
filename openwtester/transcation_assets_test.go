@@ -161,9 +161,9 @@ func TestTransfer(t *testing.T) {
 
 func TestSummary(t *testing.T) {
 	tm := testInitWalletManager()
-	walletID := "WKriBxC3cM25NFUjCcMAQ7tPKWjJjoRu7W"
-	accountID := "9NCrTDCwgEpEYmJs3w2DTtytUykTj4raBzGgLrLSgz7A"
-	summaryAddress := "EbHMiTJnPfhccuUBEQQSN5Kgt72aeZHKqJ"
+	walletID := "WL7QnYpZmK8qxB5Ua8z7vVn3AYG9Qx9bWk"
+	accountID := "5hFNEE1yoJ7HkD4uLFjfJK2XURVZk7VKEXCSwoR2w6NJ"
+	summaryAddress := "EUGcpG61TRzgWZ7RUz8MEAk9cZ3voikZDb"
 
 	testGetAssetsAccountBalance(tm, walletID, accountID)
 

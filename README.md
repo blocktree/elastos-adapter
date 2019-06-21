@@ -15,4 +15,6 @@ serverAPI = "http://ip:port"
 useFixedFee = false
 # fixed fee
 fixedFee = "0.005"
+# Cache data file directory, default = "", current directory: ./data
+dataDir = ""
 ```

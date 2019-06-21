@@ -92,7 +92,7 @@ func TestWalletManager_GetAssetsAccountList(t *testing.T) {
 
 	tm := testInitWalletManager()
 
-	walletID := "WKriBxC3cM25NFUjCcMAQ7tPKWjJjoRu7W"
+	walletID := "WL7QnYpZmK8qxB5Ua8z7vVn3AYG9Qx9bWk"
 	list, err := tm.GetAssetsAccountList(testApp, walletID, 0, 10000000)
 	if err != nil {
 		log.Error("unexpected error:", err)
@@ -128,8 +128,8 @@ func TestWalletManager_GetAddressList(t *testing.T) {
 
 	tm := testInitWalletManager()
 
-	walletID := "WKriBxC3cM25NFUjCcMAQ7tPKWjJjoRu7W"
-	accountID := "9NCrTDCwgEpEYmJs3w2DTtytUykTj4raBzGgLrLSgz7A"
+	walletID := "WL7QnYpZmK8qxB5Ua8z7vVn3AYG9Qx9bWk"
+	accountID := "5hFNEE1yoJ7HkD4uLFjfJK2XURVZk7VKEXCSwoR2w6NJ"
 	list, err := tm.GetAddressList(testApp, walletID, accountID, 0, -1, false)
 	if err != nil {
 		log.Error("unexpected error:", err)
