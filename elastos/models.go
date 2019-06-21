@@ -82,7 +82,6 @@ type Unspent struct {
 }
 
 func NewUnspent(json *gjson.Result) *Unspent {
-	fmt.Println(json.Raw)
 	obj := &Unspent{}
 	//解析json
 	obj.TxID = gjson.Get(json.Raw, "txid").String()
