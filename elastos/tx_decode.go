@@ -154,7 +154,7 @@ func (decoder *TransactionDecoder) CreateELARawTransaction(wrapper openwallet.Wa
 	}
 
 	if len(address) == 0 {
-		return fmt.Errorf("[%s] have not addresses", accountID)
+		return openwallet.Errorf(openwallet.ErrAccountNotAddress, "[%s] have not addresses", rawTx.Account.AccountID)
 	}
 
 	searchAddrs := make([]string, 0)
@@ -224,7 +224,7 @@ func (decoder *TransactionDecoder) CreateELARawTransaction(wrapper openwallet.Wa
 		}
 
 		if balance.LessThan(computeTotalSend) {
-			return fmt.Errorf("The balance: %s is not enough! ", balance.StringFixed(decoder.wm.Decimal()))
+			return openwallet.Errorf(openwallet.ErrInsufficientBalanceOfAccount, "the balance: %s is not enough", balance.StringFixed(decoder.wm.Decimal()))
 		}
 
 		sigCount := int64(0)
