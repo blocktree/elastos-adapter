@@ -12,6 +12,8 @@ import (
 var (
 	testApp        = "elastos-adapter"
 	configFilePath = filepath.Join("conf")
+	dbFilePath = filepath.Join("data", "db")
+	dbFileName = "blockchain-ELA.db"
 )
 
 func testInitWalletManager() *openw.WalletManager {

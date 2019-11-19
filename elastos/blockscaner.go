@@ -28,7 +28,7 @@ import (
 	"github.com/asdine/storm"
 	"github.com/blocktree/openwallet/common"
 	"github.com/blocktree/openwallet/openwallet"
-	"github.com/graarh/golang-socketio"
+	gosocketio "github.com/graarh/golang-socketio"
 	"github.com/graarh/golang-socketio/transport"
 	"github.com/shopspring/decimal"
 )
@@ -56,8 +56,8 @@ type ELABlockScanner struct {
 	stopSocketIO         chan struct{}
 
 	//用于实现浏览器
-	IsSkipFailedBlock bool                                    //是否跳过失败区块
-///	ELABlockObservers map[ELABlockScanNotificationObject]bool //观察者
+	IsSkipFailedBlock bool //是否跳过失败区块
+	///	ELABlockObservers map[ELABlockScanNotificationObject]bool //观察者
 }
 
 //ExtractResult 扫描完成的提取结果
@@ -162,7 +162,7 @@ func (bs *ELABlockScanner) ScanBlockTask() {
 			bs.wm.Log.Std.Info("block scanner can not get new block data; unexpected error: %v", err)
 
 			//记录未扫区块
-			unscanRecord := NewUnscanRecord(currentHeight, "", err.Error())
+			unscanRecord := openwallet.NewUnscanRecord(currentHeight, "", err.Error(),bs.wm.Symbol())
 			bs.SaveUnscanRecord(unscanRecord)
 			bs.wm.Log.Std.Info("block height: %d extract failed.", currentHeight)
 			continue
@@ -293,7 +293,7 @@ func (bs *ELABlockScanner) scanBlock(height uint64) (*Block, error) {
 		bs.wm.Log.Std.Info("block scanner can not get new block data; unexpected error: %v", err)
 
 		//记录未扫区块
-		unscanRecord := NewUnscanRecord(height, "", err.Error())
+		unscanRecord := openwallet.NewUnscanRecord(height, "", err.Error(), bs.wm.Symbol())
 		bs.SaveUnscanRecord(unscanRecord)
 		bs.wm.Log.Std.Info("block height: %d extract failed.", height)
 		return nil, err
@@ -457,7 +457,7 @@ func (bs *ELABlockScanner) BatchExtractTransaction(blockHeight uint64, blockHash
 
 			} else {
 				//记录未扫区块
-				unscanRecord := NewUnscanRecord(height, "", "")
+				unscanRecord := openwallet.NewUnscanRecord(height, "", "", bs.wm.Symbol())
 				bs.SaveUnscanRecord(unscanRecord)
 				bs.wm.Log.Std.Info("block height: %d extract failed.", height)
 				failed++ //标记保存失败数
@@ -573,7 +573,6 @@ func (bs *ELABlockScanner) ExtractTransaction(blockHeight uint64, blockHash stri
 
 }
 
-
 //ExtractTransactionData 提取交易单
 func (bs *ELABlockScanner) extractTransaction(trx *Transaction, result *ExtractResult, scanAddressFunc openwallet.BlockScanAddressFunc) {
 
@@ -585,80 +584,80 @@ func (bs *ELABlockScanner) extractTransaction(trx *Transaction, result *ExtractR
 		//记录哪个区块哪个交易单没有完成扫描
 		success = false
 	} else {
-if trx.Type == 0 || trx.Type == 2{
-	vin := trx.Vins
-	blocktime := trx.Blocktime
+		if trx.Type == 0 || trx.Type == 2 {
+			vin := trx.Vins
+			blocktime := trx.Blocktime
 
-	//检查交易单输入信息是否完整，不完整查上一笔交易单的输出填充数据
-	for _, input := range vin {
+			//检查交易单输入信息是否完整，不完整查上一笔交易单的输出填充数据
+			for _, input := range vin {
 
-		if len(input.Coinbase) > 0 {
-			//coinbase skip
-			success = true
-			break
-		}
-
-		//如果input中没有地址，需要查上一笔交易的output提取
-		if len(input.Addr) == 0 {
-
-			intxid := input.TxID
-			vout := input.Vout
-
-			preTx, err := bs.wm.GetTransaction(intxid)
-			if err != nil {
-				success = false
-				break
-			} else {
-				preVouts := preTx.Vouts
-				if len(preVouts) > int(vout) {
-					preOut := preVouts[vout]
-					input.Addr = preOut.Addr
-					input.Value = preOut.Value
+				if len(input.Coinbase) > 0 {
+					//coinbase skip
 					success = true
+					break
 				}
+
+				//如果input中没有地址，需要查上一笔交易的output提取
+				if len(input.Addr) == 0 {
+
+					intxid := input.TxID
+					vout := input.Vout
+
+					preTx, err := bs.wm.GetTransaction(intxid)
+					if err != nil {
+						success = false
+						break
+					} else {
+						preVouts := preTx.Vouts
+						if len(preVouts) > int(vout) {
+							preOut := preVouts[vout]
+							input.Addr = preOut.Addr
+							input.Value = preOut.Value
+							success = true
+						}
+					}
+
+				}
+
 			}
 
-		}
+			if success {
 
-	}
+				//提取出账部分记录
+				from, totalSpent := bs.extractTxInput(trx, result, scanAddressFunc)
 
-	if success {
+				//提取入账部分记录
+				to, totalReceived := bs.extractTxOutput(trx, result, scanAddressFunc)
 
-		//提取出账部分记录
-		from, totalSpent := bs.extractTxInput(trx, result, scanAddressFunc)
+				for _, extractData := range result.extractData {
+					tx := &openwallet.Transaction{
+						From: from,
+						To:   to,
+						Fees: totalSpent.Sub(totalReceived).StringFixed(bs.wm.Decimal()),
+						Coin: openwallet.Coin{
+							Symbol:     bs.wm.Symbol(),
+							IsContract: false,
+						},
+						BlockHash:   trx.BlockHash,
+						BlockHeight: trx.BlockHeight,
+						TxID:        trx.TxID,
+						Decimal:     bs.wm.Decimal(),
+						ConfirmTime: blocktime,
+						Status:      openwallet.TxStatusSuccess,
+					}
+					wxID := openwallet.GenTransactionWxID(tx)
+					tx.WxID = wxID
+					extractData.Transaction = tx
+				}
 
-		//提取入账部分记录
-		to, totalReceived := bs.extractTxOutput(trx, result, scanAddressFunc)
-
-		for _, extractData := range result.extractData {
-			tx := &openwallet.Transaction{
-				From: from,
-				To:   to,
-				Fees: totalSpent.Sub(totalReceived).StringFixed(bs.wm.Decimal()),
-				Coin: openwallet.Coin{
-					Symbol:     bs.wm.Symbol(),
-					IsContract: false,
-				},
-				BlockHash:   trx.BlockHash,
-				BlockHeight: trx.BlockHeight,
-				TxID:        trx.TxID,
-				Decimal:     bs.wm.Decimal(),
-				ConfirmTime: blocktime,
-				Status:      openwallet.TxStatusSuccess,
 			}
-			wxID := openwallet.GenTransactionWxID(tx)
-			tx.WxID = wxID
-			extractData.Transaction = tx
+
+			success = true
+
+		} else {
+			success = true
 		}
-
 	}
-
-	success = true
-
-	}else{
-		success = true
-	}
-}
 
 	result.Success = success
 }
@@ -795,7 +794,7 @@ func (bs *ELABlockScanner) newExtractDataNotify(height uint64, extractData map[s
 			if err != nil {
 				bs.wm.Log.Error("BlockExtractDataNotify unexpected error:", err)
 				//记录未扫区块
-				unscanRecord := NewUnscanRecord(height, "", "ExtractData Notify failed.")
+				unscanRecord := openwallet.NewUnscanRecord(height, "", "ExtractData Notify failed.", bs.wm.Symbol())
 				err = bs.SaveUnscanRecord(unscanRecord)
 				if err != nil {
 					bs.wm.Log.Std.Error("block height: %d, save unscan record failed. unexpected error: %v", height, err.Error())
@@ -932,28 +931,28 @@ func (bs *ELABlockScanner) ExtractTransactionData(txid string, scanTargetFunc op
 	}
 	return extData, nil
 }
-
-//SaveTxToWalletDB 保存交易记录到钱包数据库
-func (bs *ELABlockScanner) SaveUnscanRecord(record *UnscanRecord) error {
-
-	if record == nil {
-		return errors.New("the unscan record to save is nil")
-	}
-
-	if record.BlockHeight == 0 {
-		bs.wm.Log.Warn("unconfirmed transaction do not rescan")
-		return nil
-	}
-
-	//获取本地区块高度
-	db, err := storm.Open(filepath.Join(bs.wm.Config.dbPath, bs.wm.Config.BlockchainFile))
-	if err != nil {
-		return err
-	}
-	defer db.Close()
-
-	return db.Save(record)
-}
+//
+////SaveTxToWalletDB 保存交易记录到钱包数据库
+//func (bs *ELABlockScanner) SaveUnscanRecord(record *UnscanRecord) error {
+//
+//	if record == nil {
+//		return errors.New("the unscan record to save is nil")
+//	}
+//
+//	if record.BlockHeight == 0 {
+//		bs.wm.Log.Warn("unconfirmed transaction do not rescan")
+//		return nil
+//	}
+//
+//	//获取本地区块高度
+//	db, err := storm.Open(filepath.Join(bs.wm.Config.dbPath, bs.wm.Config.BlockchainFile))
+//	if err != nil {
+//		return err
+//	}
+//	defer db.Close()
+//
+//	return db.Save(record)
+//}
 
 //GetBlockHeight 获取区块链高度
 func (wm *WalletManager) GetBlockHeight() (uint64, error) {
@@ -1052,8 +1051,6 @@ func (wm *WalletManager) GetTransaction(txid string) (*Transaction, error) {
 func (wm *WalletManager) GetTxOut(txid string, vout uint64) (*Vout, error) {
 	return wm.WalletClient.getTxOut(txid, vout)
 }
-
-
 
 //获取未扫记录
 func (wm *WalletManager) GetUnscanRecords() ([]*UnscanRecord, error) {
@@ -1180,7 +1177,7 @@ func (bs *ELABlockScanner) GetTransactionsByAddress(offset, limit int, coin open
 	// if err != nil {
 	// 	return nil, err
 	// }
-trxs := []*Transaction{}
+	trxs := []*Transaction{}
 	key := "account"
 
 	//提取账户相关的交易单
@@ -1217,7 +1214,6 @@ trxs := []*Transaction{}
 //Run 运行
 func (bs *ELABlockScanner) Run() error {
 
-
 	bs.BlockScannerBase.Run()
 
 	return nil
@@ -1237,7 +1233,6 @@ func (bs *ELABlockScanner) Stop() error {
 	bs.BlockScannerBase.Stop()
 	return nil
 }
-
 
 /******************* 使用insight socket.io 监听区块 *******************/
 
@@ -1374,5 +1369,10 @@ func (bs *ELABlockScanner) setupSocketIO() error {
 		}
 	}
 
-//	return nil
+	//	return nil
+}
+
+
+func (bs *ELABlockScanner) SupportBlockchainDAI() bool {
+	return true
 }
