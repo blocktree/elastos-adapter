@@ -68,7 +68,7 @@ type WalletConfig struct {
 	//rpc证书
 	CertFileName string
 	//区块链数据文件
-	BlockchainFile string
+	//BlockchainFile string
 	// 核心钱包是否只做监听
 	CoreWalletWatchOnly bool
 	//最大的输入数量
@@ -132,7 +132,7 @@ func NewConfig(symbol string, curveType uint32, decimals int32) *WalletConfig {
 	//rpc证书
 	c.CertFileName = "rpc.cert"
 	//区块链数据文件
-	c.BlockchainFile = "blockchain.db"
+	//c.BlockchainFile = "blockchain.db"
 	// 核心钱包是否只做监听
 	c.CoreWalletWatchOnly = true
 	//最大的输入数量

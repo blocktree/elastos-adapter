@@ -20,12 +20,10 @@ import (
 	"fmt"
 
 	"net/url"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/asdine/storm"
 	"github.com/blocktree/openwallet/common"
 	"github.com/blocktree/openwallet/openwallet"
 	gosocketio "github.com/graarh/golang-socketio"
@@ -34,12 +32,7 @@ import (
 )
 
 const (
-	blockchainBucket = "blockchain" //区块链数据集合
-	//periodOfTask      = 5 * time.Second //定时任务执行隔间
 	maxExtractingSize = 10 //并发的扫描线程数
-
-	RPCServerCore     = 0 //RPC服务，bitcoin核心钱包
-	RPCServerExplorer = 1 //RPC服务，insight-API
 )
 
 //ELABlockScanner bitcoin的区块链扫描器
@@ -106,7 +99,7 @@ func (bs *ELABlockScanner) SetRescanBlockHeight(height uint64) error {
 		return err
 	}
 
-	bs.wm.SaveLocalNewBlock(height, hash)
+	bs.wm.Blockscanner.SaveLocalNewBlock(height, hash)
 
 	return nil
 }
@@ -218,7 +211,7 @@ func (bs *ELABlockScanner) ScanBlockTask() {
 			bs.wm.Log.Std.Info("rescan block on height: %d, hash: %s .", currentHeight, currentHash)
 
 			//重新记录一个新扫描起点
-			bs.wm.SaveLocalNewBlock(localBlock.Height, localBlock.Hash)
+			bs.wm.Blockscanner.SaveLocalNewBlock(localBlock.Height, localBlock.Hash)
 
 			isFork = true
 
@@ -239,7 +232,7 @@ func (bs *ELABlockScanner) ScanBlockTask() {
 			currentHash = hash
 
 			//保存本地新高度
-			bs.wm.SaveLocalNewBlock(currentHeight, currentHash)
+			bs.wm.Blockscanner.SaveLocalNewBlock(currentHeight, currentHash)
 			bs.SaveLocalBlock(block)
 
 			isFork = false
@@ -401,7 +394,7 @@ func (bs *ELABlockScanner) RescanFailedRecord() {
 	}
 
 	//删除未没有找到交易记录的重扫记录
-	bs.wm.DeleteUnscanRecordNotFindTX()
+	bs.wm.Blockscanner.DeleteUnscanRecordNotFindTX()
 }
 
 //newBlockNotify 获得新区块后，通知给观测者
@@ -808,34 +801,26 @@ func (bs *ELABlockScanner) newExtractDataNotify(height uint64, extractData map[s
 }
 
 //DeleteUnscanRecordNotFindTX 删除未没有找到交易记录的重扫记录
-func (wm *WalletManager) DeleteUnscanRecordNotFindTX() error {
+func (bs *ELABlockScanner) DeleteUnscanRecordNotFindTX() error {
 
 	//删除找不到交易单
 	reason := "[-5]No information available about transaction"
 
-	//获取本地区块高度
-	db, err := storm.Open(filepath.Join(wm.Config.dbPath, wm.Config.BlockchainFile))
-	if err != nil {
-		return err
+	if bs.BlockchainDAI == nil {
+		return fmt.Errorf("Blockchain DAI is not setup ")
 	}
-	defer db.Close()
 
-	var list []*UnscanRecord
-	err = db.All(&list)
+	list, err := bs.BlockchainDAI.GetUnscanRecords(bs.wm.Symbol())
 	if err != nil {
 		return err
 	}
 
-	tx, err := db.Begin(true)
-	if err != nil {
-		return err
-	}
 	for _, r := range list {
 		if strings.HasPrefix(r.Reason, reason) {
-			tx.DeleteStruct(r)
+			bs.BlockchainDAI.DeleteUnscanRecordByID(r.ID, bs.wm.Symbol())
 		}
 	}
-	return tx.Commit()
+	return nil
 }
 
 //GetScannedBlockHeader 获取当前扫描的区块头
@@ -847,7 +832,10 @@ func (bs *ELABlockScanner) GetScannedBlockHeader() (*openwallet.BlockHeader, err
 		err         error
 	)
 
-	blockHeight, hash = bs.wm.GetLocalNewBlock()
+	blockHeight, hash, err = bs.wm.Blockscanner.GetLocalNewBlock()
+	if err != nil {
+		return nil, err
+	}
 
 	//如果本地没有记录，查询接口的高度
 	if blockHeight == 0 {
@@ -903,7 +891,7 @@ func (bs *ELABlockScanner) GetGlobalMaxBlockHeight() uint64 {
 
 //GetScannedBlockHeight 获取已扫区块高度
 func (bs *ELABlockScanner) GetScannedBlockHeight() uint64 {
-	localHeight, _ := bs.wm.GetLocalNewBlock()
+	localHeight, _, _ := bs.wm.Blockscanner.GetLocalNewBlock()
 	return localHeight
 }
 
@@ -938,39 +926,37 @@ func (wm *WalletManager) GetBlockHeight() (uint64, error) {
 }
 
 //GetLocalNewBlock 获取本地记录的区块高度和hash
-func (wm *WalletManager) GetLocalNewBlock() (uint64, string) {
+func (bs *ELABlockScanner) GetLocalNewBlock() (uint64, string, error) {
 
-	var (
-		blockHeight uint64 = 0
-		blockHash   string = ""
-	)
-
-	//获取本地区块高度
-	db, err := storm.Open(filepath.Join(wm.Config.dbPath, wm.Config.BlockchainFile))
-	if err != nil {
-		return 0, ""
+	if bs.BlockchainDAI == nil {
+		return 0, "", fmt.Errorf("Blockchain DAI is not setup ")
 	}
-	defer db.Close()
 
-	db.Get(blockchainBucket, "blockHeight", &blockHeight)
-	db.Get(blockchainBucket, "blockHash", &blockHash)
+	header, err := bs.BlockchainDAI.GetCurrentBlockHead(bs.wm.Symbol())
+	if err != nil {
+		return 0, "", err
+	}
 
-	return blockHeight, blockHash
+	return header.Height, header.Hash, nil
 }
 
 //SaveLocalNewBlock 记录区块高度和hash到本地
-func (wm *WalletManager) SaveLocalNewBlock(blockHeight uint64, blockHash string) {
+func (bs *ELABlockScanner) SaveLocalNewBlock(blockHeight uint64, blockHash string) error {
 
-	//获取本地区块高度
-	db, err := storm.Open(filepath.Join(wm.Config.dbPath, wm.Config.BlockchainFile))
-	if err != nil {
-		return
+	if bs.BlockchainDAI == nil {
+		return fmt.Errorf("Blockchain DAI is not setup ")
 	}
-	defer db.Close()
 
-	db.Set(blockchainBucket, "blockHeight", &blockHeight)
-	db.Set(blockchainBucket, "blockHash", &blockHash)
+	header := &openwallet.BlockHeader{
+		Hash:   blockHash,
+		Height: blockHeight,
+		Fork:   false,
+		Symbol: bs.wm.Symbol(),
+	}
+
+	return bs.BlockchainDAI.SaveCurrentBlockHead(header)
 }
+
 
 //GetBlockHash 根据区块高度获得区块hash
 func (wm *WalletManager) GetBlockHash(height uint64) (string, error) {
